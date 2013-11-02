@@ -5,8 +5,10 @@ import android.content.ContentValues;
 import android.content.SharedPreferences;
 import android.net.Uri;
 import android.os.Bundle;
+import android.os.Handler;
 import android.telephony.SmsMessage;
 import android.widget.CompoundButton;
+import android.widget.TextView;
 import android.widget.ToggleButton;
 
 import com.jonuy.thumbwars.R;
@@ -26,18 +28,63 @@ public class MainActivity extends Activity implements CompoundButton.OnCheckedCh
 
     private final String PREFS_NAME = "ThumbWarsPrefs";
     private final String PREFS_IS_SMS_BLOCKED = "isSmsBlocked";
+    private final String PREFS_TIME_ELAPSED = "timeElapsed";
+    private final String PREFS_START_TIME = "startTime";
     private final String SMS_FILENAME = "ThumbWarsSMS";
+
+    // Handler to update the timer
+    private Handler mHandlerTimer;
+
+    // TextView containing the timer text
+    private TextView mTimerText;
+
+    // ToggleButton to enable/disable SMS blocking
+    private ToggleButton mSmsToggleButton;
+
+    // Time in milliseconds the timer was started
+    private long mStartTime;
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        ToggleButton toggleSmsBlock = (ToggleButton)findViewById(R.id.toggleBlock);
-        toggleSmsBlock.setOnCheckedChangeListener(this);
+        mHandlerTimer = new Handler();
+
+        mSmsToggleButton = (ToggleButton)findViewById(R.id.toggleBlock);
+        mSmsToggleButton.setOnCheckedChangeListener(this);
+
+        mTimerText = (TextView)findViewById(R.id.timer);
+    }
+
+    @Override
+    public void onPause() {
+        super.onPause();
+
+        // Check if user is leaving the activity with SMS blocking still enabled
+        SharedPreferences sharedPrefs = getSharedPreferences(PREFS_NAME, 0);
+        if (sharedPrefs.getBoolean(PREFS_IS_SMS_BLOCKED, false)) {
+            // Save the start time to reference again when the user returns to the app
+            SharedPreferences.Editor editor = sharedPrefs.edit();
+            editor.putLong(PREFS_START_TIME, mStartTime);
+            editor.commit();
+        }
+
+        // Remove Runnable from the Handler. Will be started up again in onResume() when the user
+        // returns to the Activity.
+        mHandlerTimer.removeCallbacks(updateTimeRunnable);
+    }
+
+    @Override
+    public void onResume() {
+        super.onResume();
 
         // Set state of the ToggleButton
-        toggleSmsBlock.setChecked(isSmsBlocked());
+        mSmsToggleButton.setChecked(isSmsBlocked());
+
+        // Set the start time based on SharedPreferences if saved
+        SharedPreferences sharedPrefs = getSharedPreferences(PREFS_NAME, 0);
+        mStartTime = sharedPrefs.getLong(PREFS_START_TIME, System.currentTimeMillis());
     }
 
     @Override
@@ -59,7 +106,19 @@ public class MainActivity extends Activity implements CompoundButton.OnCheckedCh
         SharedPreferences sharedPrefs = getSharedPreferences(PREFS_NAME, 0);
         SharedPreferences.Editor editor = sharedPrefs.edit();
         editor.putBoolean(PREFS_IS_SMS_BLOCKED, false);
+
+        // Get the time elapsed
+        long timeElapsed = System.currentTimeMillis() - mStartTime;
+
+        long cachedTimeElapsed = System.currentTimeMillis();
+        sharedPrefs.getLong(PREFS_TIME_ELAPSED, cachedTimeElapsed);
+
+        cachedTimeElapsed += timeElapsed;
+        editor.putLong(PREFS_TIME_ELAPSED, cachedTimeElapsed);
         editor.commit();
+
+        // Stop the timer
+        mHandlerTimer.removeCallbacks(updateTimeRunnable);
 
         ArrayList<SmsDataCache> smsMessages = null;
 
@@ -106,6 +165,10 @@ public class MainActivity extends Activity implements CompoundButton.OnCheckedCh
         SharedPreferences.Editor editor = sharedPrefs.edit();
         editor.putBoolean(PREFS_IS_SMS_BLOCKED, true);
         editor.commit();
+
+        // Start the timer
+        mStartTime = System.currentTimeMillis();
+        mHandlerTimer.postDelayed(updateTimeRunnable, 0);
     }
 
     /**
@@ -137,4 +200,23 @@ public class MainActivity extends Activity implements CompoundButton.OnCheckedCh
             getContentResolver().insert(Uri.parse("content://sms"), values);
         }
     }
+
+    private Runnable updateTimeRunnable = new Runnable() {
+        public void run() {
+            long timeInMillis = System.currentTimeMillis() - mStartTime;
+            int seconds = (int)(timeInMillis / 1000);
+            int minutes = seconds / 60;
+            int hours = minutes / 60;
+
+            minutes = minutes % 60;
+            seconds = seconds % 60;
+
+            String displayTime = String.format("%02d:%02d:%02d", hours, minutes, seconds);
+            if (mTimerText != null)
+                mTimerText.setText(displayTime);
+
+            if (mHandlerTimer != null)
+                mHandlerTimer.postDelayed(updateTimeRunnable, 0);
+        }
+    };
 }

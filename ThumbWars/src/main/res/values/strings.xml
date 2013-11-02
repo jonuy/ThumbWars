@@ -1,3 +1,4 @@
 <resources>
     <string name="app_name">Thumb Wars</string>
+    <string name="timer_default_time">00:00:00</string>
 </resources>
