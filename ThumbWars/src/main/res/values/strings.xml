@@ -1,4 +1,6 @@
 <resources>
     <string name="app_name">Thumb Wars</string>
+    <string name="notification_content">"Blocking incoming text messages..."</string>
+    <string name="notification_title">"ThumbWars Enabled"</string>
     <string name="timer_default_time">00:00:00</string>
 </resources>
