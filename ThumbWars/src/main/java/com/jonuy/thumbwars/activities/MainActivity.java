@@ -19,6 +19,7 @@ import android.widget.ToggleButton;
 
 import com.jonuy.thumbwars.R;
 import com.jonuy.thumbwars.datastore.SmsDataCache;
+import com.jonuy.thumbwars.datastore.SmsDataCacheTransfer;
 
 import java.io.File;
 import java.io.FileInputStream;
@@ -146,8 +147,8 @@ public class MainActivity extends Activity implements CompoundButton.OnCheckedCh
         NotificationManager notificationManager = (NotificationManager)getSystemService(Context.NOTIFICATION_SERVICE);
         notificationManager.cancelAll();
 
-        // List of messages to send to results screen
-        ArrayList<SmsMessage> smsMessages = new ArrayList<SmsMessage>();
+        // Wrapper for list of messages to send to results screen
+        SmsDataCacheTransfer smsDataCacheTransfer = null;
 
         File smsFile = getFileStreamPath(SMS_FILENAME);
         if (smsFile.exists()) {
@@ -160,6 +161,7 @@ public class MainActivity extends Activity implements CompoundButton.OnCheckedCh
 
                 try {
                     messages = (ArrayList<SmsDataCache>)ois.readObject();
+                    smsDataCacheTransfer = new SmsDataCacheTransfer(messages);
                 }
                 catch (Exception e) {
                     e.printStackTrace();
@@ -173,11 +175,6 @@ public class MainActivity extends Activity implements CompoundButton.OnCheckedCh
                     SmsDataCache smsMsg = iter.next();
                     SmsMessage[] smsMsgs = smsMsg.getMessages();
                     putSmsToDatabase(smsMsgs);
-
-                    // Also cache to list to send to results screen
-                    for (int i = 0; i < smsMsgs.length; i++) {
-                        smsMessages.add(smsMsgs[i]);
-                    }
                 }
 
                 // Clear the file
@@ -197,7 +194,7 @@ public class MainActivity extends Activity implements CompoundButton.OnCheckedCh
         // Go to Results Activity
         Intent intent = new Intent(this, ResultsActivity.class);
         intent.putExtra(EXTRA_TIME_ELAPSED, timeElapsed);
-        intent.putExtra(EXTRA_MESSAGES, smsMessages);
+        intent.putExtra(EXTRA_MESSAGES, smsDataCacheTransfer);
         startActivity(intent);
     }
 
@@ -260,7 +257,7 @@ public class MainActivity extends Activity implements CompoundButton.OnCheckedCh
             values.put("read", 0); // Indicate that the message has not yet been read.
             values.put("status", msg.getStatus());
             values.put("type", 1); // 1 indicates inbox message
-            values.put("seen", 2);
+            values.put("seen", 0);
             values.put("body", msg.getMessageBody().toString());
 
             getContentResolver().insert(Uri.parse("content://sms"), values);

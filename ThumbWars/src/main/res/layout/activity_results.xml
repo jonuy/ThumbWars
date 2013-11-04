@@ -54,4 +54,9 @@
             android:text="-1"
             android:textSize="18sp"/>
     </RelativeLayout>
+    
+    <ListView
+        android:id="@+id/messagesList"
+        android:layout_height="wrap_content"
+        android:layout_width="match_parent"/>
 </LinearLayout>
