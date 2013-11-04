@@ -20,6 +20,7 @@ import android.widget.ToggleButton;
 import com.jonuy.thumbwars.R;
 import com.jonuy.thumbwars.datastore.SmsDataCache;
 
+import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.IOException;
@@ -32,10 +33,17 @@ import java.util.Iterator;
  */
 public class MainActivity extends Activity implements CompoundButton.OnCheckedChangeListener {
 
+    // Keys for Intent extras
+    private final String EXTRA_TIME_ELAPSED = "timeElapsed";
+    private final String EXTRA_MESSAGES = "smsMessages";
+
+    // Fields for SharedPreferences
     private final String PREFS_NAME = "ThumbWarsPrefs";
     private final String PREFS_IS_SMS_BLOCKED = "isSmsBlocked";
     private final String PREFS_TIME_ELAPSED = "timeElapsed";
     private final String PREFS_START_TIME = "startTime";
+
+    // Filename for the cached messages
     private final String SMS_FILENAME = "ThumbWarsSMS";
 
     // Handler to update the timer
@@ -49,6 +57,9 @@ public class MainActivity extends Activity implements CompoundButton.OnCheckedCh
 
     // Time in milliseconds the timer was started
     private long mStartTime;
+
+    // Indicates whether or not blocking is on
+    private boolean mIsBlocking;
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
@@ -85,12 +96,14 @@ public class MainActivity extends Activity implements CompoundButton.OnCheckedCh
     public void onResume() {
         super.onResume();
 
-        // Set state of the ToggleButton
-        mSmsToggleButton.setChecked(isSmsBlocked());
+        if (isSmsBlocked()) {
+            // Set state of the ToggleButton
+            mSmsToggleButton.setChecked(true);
 
-        // Set the start time based on SharedPreferences if saved
-        SharedPreferences sharedPrefs = getSharedPreferences(PREFS_NAME, 0);
-        mStartTime = sharedPrefs.getLong(PREFS_START_TIME, System.currentTimeMillis());
+            // Set the start time based on SharedPreferences if saved
+            SharedPreferences sharedPrefs = getSharedPreferences(PREFS_NAME, 0);
+            mStartTime = sharedPrefs.getLong(PREFS_START_TIME, System.currentTimeMillis());
+        }
     }
 
     @Override
@@ -99,7 +112,7 @@ public class MainActivity extends Activity implements CompoundButton.OnCheckedCh
             if (isChecked) {
                 enableSmsBlocking();
             }
-            else {
+            else if (mIsBlocking) {
                 disableSmsBlocking();
             }
         }
@@ -113,9 +126,12 @@ public class MainActivity extends Activity implements CompoundButton.OnCheckedCh
         SharedPreferences.Editor editor = sharedPrefs.edit();
         editor.putBoolean(PREFS_IS_SMS_BLOCKED, false);
 
+        mIsBlocking = false;
+
         // Get the time elapsed
         long timeElapsed = System.currentTimeMillis() - mStartTime;
 
+        // Update the total time SMS has been blocked all time
         long cachedTimeElapsed = System.currentTimeMillis();
         sharedPrefs.getLong(PREFS_TIME_ELAPSED, cachedTimeElapsed);
 
@@ -130,41 +146,59 @@ public class MainActivity extends Activity implements CompoundButton.OnCheckedCh
         NotificationManager notificationManager = (NotificationManager)getSystemService(Context.NOTIFICATION_SERVICE);
         notificationManager.cancelAll();
 
-        ArrayList<SmsDataCache> smsMessages = null;
+        // List of messages to send to results screen
+        ArrayList<SmsMessage> smsMessages = new ArrayList<SmsMessage>();
 
-        // Get any blocked messages out of the private file
-        try {
-            FileInputStream fis = openFileInput(SMS_FILENAME);
-            ObjectInputStream ois = new ObjectInputStream(fis);
+        File smsFile = getFileStreamPath(SMS_FILENAME);
+        if (smsFile.exists()) {
+            ArrayList<SmsDataCache> messages = null;
 
+            // Get any blocked messages out of the private file
             try {
-                smsMessages = (ArrayList<SmsDataCache>)ois.readObject();
+                FileInputStream fis = openFileInput(SMS_FILENAME);
+                ObjectInputStream ois = new ObjectInputStream(fis);
+
+                try {
+                    messages = (ArrayList<SmsDataCache>)ois.readObject();
+                }
+                catch (Exception e) {
+                    e.printStackTrace();
+                }
+
+                ois.close();
+                fis.close();
+
+                // Write messages to the native inbox database
+                for (Iterator<SmsDataCache> iter = messages.iterator(); iter.hasNext();) {
+                    SmsDataCache smsMsg = iter.next();
+                    SmsMessage[] smsMsgs = smsMsg.getMessages();
+                    putSmsToDatabase(smsMsgs);
+
+                    // Also cache to list to send to results screen
+                    for (int i = 0; i < smsMsgs.length; i++) {
+                        smsMessages.add(smsMsgs[i]);
+                    }
+                }
+
+                // Clear the file
+                deleteFile(SMS_FILENAME);
             }
-            catch (Exception e) {
+            catch (FileNotFoundException e) {
+                e.printStackTrace();
+
+                // File of cached messages not found. This is expected for cases where the text blocking
+                // is either disabled or enabled and no messages have yet been received.
+            }
+            catch (IOException e) {
                 e.printStackTrace();
             }
-
-            ois.close();
-            fis.close();
-
-            // Write messages to the native inbox database
-            for (Iterator<SmsDataCache> iter = smsMessages.iterator(); iter.hasNext();) {
-                SmsDataCache smsMsg = iter.next();
-                putSmsToDatabase(smsMsg.getMessages());
-            }
-
-            // Clear the file
-            deleteFile(SMS_FILENAME);
         }
-        catch (FileNotFoundException e) {
-            e.printStackTrace();
 
-            // File of cached messages not found. This is expected for cases where the text blocking
-            // is either disabled or enabled and no messages have yet been received.
-        }
-        catch (IOException e) {
-            e.printStackTrace();
-        }
+        // Go to Results Activity
+        Intent intent = new Intent(this, ResultsActivity.class);
+        intent.putExtra(EXTRA_TIME_ELAPSED, timeElapsed);
+        intent.putExtra(EXTRA_MESSAGES, smsMessages);
+        startActivity(intent);
     }
 
     /**
@@ -175,6 +209,8 @@ public class MainActivity extends Activity implements CompoundButton.OnCheckedCh
         SharedPreferences.Editor editor = sharedPrefs.edit();
         editor.putBoolean(PREFS_IS_SMS_BLOCKED, true);
         editor.commit();
+
+        mIsBlocking = true;
 
         // Start the timer
         mStartTime = System.currentTimeMillis();
@@ -231,6 +267,9 @@ public class MainActivity extends Activity implements CompoundButton.OnCheckedCh
         }
     }
 
+    /**
+     * Runnable to update the timer
+     */
     private Runnable updateTimeRunnable = new Runnable() {
         public void run() {
             long timeInMillis = System.currentTimeMillis() - mStartTime;

@@ -22,8 +22,11 @@ import java.util.List;
  */
 public class SMSReceiver extends BroadcastReceiver {
 
+    // Fields for SharedPreferences
     private final String PREFS_NAME = "ThumbWarsPrefs";
     private final String PREFS_IS_SMS_BLOCKED = "isSmsBlocked";
+
+    // Filename for the cached messages
     private final String SMS_FILENAME = "ThumbWarsSMS";
 
     private boolean mSmsDisabled;
