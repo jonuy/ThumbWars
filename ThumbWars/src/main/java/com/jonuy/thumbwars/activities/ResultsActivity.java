@@ -1,14 +1,18 @@
 package com.jonuy.thumbwars.activities;
 
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.content.Context;
+import android.content.DialogInterface;
 import android.content.Intent;
+import android.net.Uri;
 import android.os.Bundle;
 import android.telephony.SmsMessage;
 import android.text.format.DateFormat;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
 import android.widget.ListView;
 import android.widget.TextView;
@@ -20,7 +24,7 @@ import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.List;
 
-public class ResultsActivity extends Activity {
+public class ResultsActivity extends Activity implements AdapterView.OnItemClickListener {
 
     // Keys for Intent extras
     private final String EXTRA_TIME_ELAPSED = "timeElapsed";
@@ -84,10 +88,47 @@ public class ResultsActivity extends Activity {
         // Set adapter for the list view
         mMessagesAdapter = new MessagesAdapter(this, mSmsMessages);
         mMessagesList.setAdapter(mMessagesAdapter);
+        mMessagesList.setOnItemClickListener(this);
     }
 
     /**
-     *
+     * When ListView item is clicked, start Intent for user to reply
+     */
+    @Override
+    public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
+        SmsMessage msg = (SmsMessage)parent.getItemAtPosition(position);
+
+        new AlertDialog.Builder(ResultsActivity.this)
+                .setTitle(msg.getOriginatingAddress())
+                .setMessage(msg.getMessageBody())
+                .setCancelable(true)
+                .setNegativeButton(R.string.results_dialog_msg_cancel, null)
+                .setPositiveButton(R.string.results_dialog_msg_reply, new MessageDialogClickListener(msg.getOriginatingAddress()))
+                .create()
+                .show();
+    }
+
+    /**
+     * Handles what to do when postive button is clicked on the message dialog box.
+     */
+    private class MessageDialogClickListener implements DialogInterface.OnClickListener {
+
+        private String address;
+
+        public MessageDialogClickListener(String address) {
+            this.address = address;
+        }
+
+        @Override
+        public void onClick(DialogInterface dialogInterface, int i) {
+            Uri uri = Uri.parse("smsto:" + address);
+            Intent intent = new Intent(Intent.ACTION_SENDTO, uri);
+            startActivity(intent);
+        }
+    }
+
+    /**
+     * Adapter for tying messages datastore with the ListView UI
      */
     private class MessagesAdapter extends ArrayAdapter<SmsMessage> {
         private Context context;
